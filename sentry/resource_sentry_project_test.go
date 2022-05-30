@@ -32,6 +32,26 @@ func TestAccSentryProject_basic(t *testing.T) {
 	  }
 	`, testOrganization, testOrganization, newProjectSlug)
 
+	testAccSentryProjectUpdateTeamConfig := fmt.Sprintf(`
+	  resource "sentry_team" "test_team" {
+	    organization = "%s"
+	    name = "Test team"
+	  }
+
+      resource "sentry_team" "test_team_2" {
+	    organization = "%s"
+	    name = "Test team 2"
+	  }
+
+	  resource "sentry_project" "test_project" {
+	    organization = "%s"
+	    teams = ["${sentry_team.test_team.id}", "${sentry_team.test_team_2.id}"]
+	    name = "Test project changed"
+	    slug = "%s"
+	    platform = "go"
+	  }
+	`, testOrganization, testOrganization, testOrganization, newProjectSlug)
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
@@ -44,7 +64,8 @@ func TestAccSentryProject_basic(t *testing.T) {
 					testAccCheckSentryProjectAttributes(&project, &testAccSentryProjectExpectedAttributes{
 						Name:         "Test project",
 						Organization: testOrganization,
-						Team:         "Test team",
+						Team:         "test-team",
+						Teams:        []string{"test-team"},
 						SlugPresent:  true,
 						Platform:     "go",
 					}),
@@ -57,7 +78,21 @@ func TestAccSentryProject_basic(t *testing.T) {
 					testAccCheckSentryProjectAttributes(&project, &testAccSentryProjectExpectedAttributes{
 						Name:         "Test project changed",
 						Organization: testOrganization,
-						Team:         "Test team",
+						Team:         "test-team",
+						Teams:        []string{"test-team"},
+						Slug:         newProjectSlug,
+						Platform:     "go",
+					}),
+				),
+			},
+			{
+				Config: testAccSentryProjectUpdateTeamConfig,
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckSentryProjectExists("sentry_project.test_project", &project),
+					testAccCheckSentryProjectAttributes(&project, &testAccSentryProjectExpectedAttributes{
+						Name:         "Test project changed",
+						Organization: testOrganization,
+						Teams:        []string{"test-team", "test-team-2"},
 						Slug:         newProjectSlug,
 						Platform:     "go",
 					}),
@@ -117,10 +152,10 @@ type testAccSentryProjectExpectedAttributes struct {
 	Name         string
 	Organization string
 	Team         string
-
-	SlugPresent bool
-	Slug        string
-	Platform    string
+	Teams        []string
+	SlugPresent  bool
+	Slug         string
+	Platform     string
 }
 
 func testAccCheckSentryProjectAttributes(proj *sentry.Project, want *testAccSentryProjectExpectedAttributes) resource.TestCheckFunc {
@@ -133,8 +168,8 @@ func testAccCheckSentryProjectAttributes(proj *sentry.Project, want *testAccSent
 			return fmt.Errorf("got organization %q; want %q", proj.Organization.Slug, want.Organization)
 		}
 
-		if proj.Team.Name != want.Team {
-			return fmt.Errorf("got team %q; want %q", proj.Team.Name, want.Team)
+		if proj.Team.Slug != want.Team {
+			return fmt.Errorf("got team %q; want %q", proj.Team.Slug, want.Team)
 		}
 
 		if want.SlugPresent && proj.Slug == "" {

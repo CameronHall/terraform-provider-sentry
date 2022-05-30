@@ -3,6 +3,7 @@ package sentry
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -28,9 +29,19 @@ func resourceSentryProject() *schema.Resource {
 				Description: "The slug of the organization the project belongs to",
 			},
 			"team": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "The slug of the team to create the project for",
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"teams"},
+				Description:   "The slug of the team to create the project for",
+			},
+			"teams": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				ConflictsWith: []string{"team"},
+				Description:   "The list of the teams to create the project for",
 			},
 			"name": {
 				Type:        schema.TypeString,
@@ -106,6 +117,22 @@ func resourceSentryProjectCreate(ctx context.Context, d *schema.ResourceData, me
 
 	org := d.Get("organization").(string)
 	team := d.Get("team").(string)
+	teamsInput := d.Get("teams").([]interface{})
+
+	if team == "" && len(teamsInput) == 0 {
+		return diag.Errorf("Missing one of the required parameters 'team' or 'teams'")
+	}
+
+	teams := make([]string, len(teamsInput))
+	for i, v := range teamsInput {
+		teams[i] = fmt.Sprint(v)
+	}
+
+	if team == "" {
+		team = teams[0]
+		teams = teams[1:]
+	}
+
 	params := &sentry.CreateProjectParams{
 		Name: d.Get("name").(string),
 		Slug: d.Get("slug").(string),
@@ -125,6 +152,25 @@ func resourceSentryProjectCreate(ctx context.Context, d *schema.ResourceData, me
 		"team":        team,
 		"org":         org,
 	})
+
+	if len(teams) > 0 {
+		for _, t := range teams {
+			if t == team {
+				continue
+			}
+
+			_, _, err = client.Projects.AddTeam(org, proj.Slug, t)
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			tflog.Debug(ctx, "Added team to Sentry project", map[string]interface{}{
+				"projectSlug": proj.Slug,
+				"projectID":   proj.ID,
+				"team":        t,
+				"org":         org,
+			})
+		}
+	}
 
 	d.SetId(proj.Slug)
 	return resourceSentryProjectUpdate(ctx, d, meta)
@@ -150,9 +196,15 @@ func resourceSentryProjectRead(ctx context.Context, d *schema.ResourceData, meta
 		"org":         org,
 	})
 
+	var teams []string
+	for _, team := range proj.Teams {
+		teams = append(teams, team.Slug)
+	}
+
 	d.SetId(proj.Slug)
 	d.Set("organization", proj.Organization.Slug)
 	d.Set("team", proj.Team.Slug)
+	d.Set("teams", teams)
 	d.Set("name", proj.Name)
 	d.Set("slug", proj.Slug)
 	d.Set("platform", proj.Platform)
@@ -205,6 +257,53 @@ func resourceSentryProjectUpdate(ctx context.Context, d *schema.ResourceData, me
 	if err != nil {
 		return diag.FromErr(err)
 	}
+
+	const TEAM_EXISTS = 0
+	const TEAM_CREATE = 1
+	const TEAM_DELETE = 2
+
+	teams := make(map[string]int)
+	if v, ok := d.GetOk("teams"); ok {
+		for _, slug := range v.([]interface{}) {
+			teams[fmt.Sprint(slug)] = TEAM_CREATE
+		}
+	}
+
+	if v, ok := d.GetOk("team"); ok {
+		teams[v.(string)] = TEAM_CREATE
+	}
+
+	for _, team := range proj.Teams {
+		if _, ok := teams[team.Slug]; ok {
+			teams[team.Slug] = TEAM_EXISTS
+		} else {
+			teams[team.Slug] = TEAM_DELETE
+		}
+	}
+
+	for team, action := range teams {
+		var debugMessage string
+		if action == TEAM_CREATE {
+			client.Projects.AddTeam(org, slug, team)
+			debugMessage = "Added team to Sentry project"
+		} else if action == TEAM_DELETE {
+			client.Projects.AddTeam(org, slug, team)
+			debugMessage = "Removed team from Sentry project"
+		} else {
+			continue
+		}
+
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		tflog.Debug(ctx, debugMessage, map[string]interface{}{
+			"projectSlug": proj.Slug,
+			"projectID":   proj.ID,
+			"team":        team,
+			"org":         org,
+		})
+	}
+
 	tflog.Debug(ctx, "Updated Sentry project", map[string]interface{}{
 		"projectSlug": proj.Slug,
 		"projectID":   proj.ID,
