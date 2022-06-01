@@ -3,9 +3,9 @@ module github.com/jianyuan/terraform-provider-sentry
 go 1.18
 
 require (
+	github.com/cameronhall/go-sentry v1.5.3
 	github.com/hashicorp/terraform-plugin-log v0.4.0
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.17.0
-	github.com/jianyuan/go-sentry v1.4.0
 	github.com/mitchellh/mapstructure v1.5.0
 	golang.org/x/time v0.0.0-20220411224347-583f2d630306
 )

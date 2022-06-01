@@ -26,13 +26,14 @@ func Provider() *schema.Provider {
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
-			"sentry_organization": resourceSentryOrganization(),
-			"sentry_team":         resourceSentryTeam(),
-			"sentry_project":      resourceSentryProject(),
-			"sentry_key":          resourceSentryKey(),
-			"sentry_default_key":  resourceSentryDefaultKey(),
-			"sentry_plugin":       resourceSentryPlugin(),
-			"sentry_rule":         resourceSentryRule(),
+			"sentry_organization":        resourceSentryOrganization(),
+			"sentry_organization_member": resourceSentryOrganizationMember(),
+			"sentry_team":                resourceSentryTeam(),
+			"sentry_project":             resourceSentryProject(),
+			"sentry_key":                 resourceSentryKey(),
+			"sentry_default_key":         resourceSentryDefaultKey(),
+			"sentry_plugin":              resourceSentryPlugin(),
+			"sentry_rule":                resourceSentryRule(),
 		},
 
 		DataSourcesMap: map[string]*schema.Resource{
