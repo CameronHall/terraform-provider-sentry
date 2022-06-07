@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"sort"
 	"strings"
 )
 
@@ -125,6 +126,8 @@ func resourceSentryOrganizationMemberRead(ctx context.Context, d *schema.Resourc
 		"teams": member.Teams,
 		"org":   org,
 	})
+
+	sort.Strings(member.Teams)
 
 	d.SetId(member.ID)
 	d.Set("member_id", member.ID)
